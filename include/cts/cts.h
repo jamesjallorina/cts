@@ -162,28 +162,28 @@ struct is_mutex : std::false_type {};
 
 template <class T>
 struct is_mutex<T, void_t< 
-                          decltype(std::declval<T>().lock()),
-                          decltype(std::declval<T>().unlock()),
-						  decltype(std::declval<T>().native_handle())>
-                        > : std::true_type {};
+						decltype(std::declval<T>().lock()),
+						decltype(std::declval<T>().unlock()),
+						decltype(std::declval<T>().native_handle())>
+						> : std::true_type {};
 
 class CAPABILITY("mutex") mutex
 {
 public:
 	using native_handle_type = std::mutex::native_handle_type;
 
-    constexpr mutex() noexcept = default;
-    ~mutex() = default;
-    mutex& operator=(const mutex&) = delete;
+	constexpr mutex() noexcept = default;
+	~mutex() = default;
+	mutex& operator=(const mutex&) = delete;
 
-    void lock() ACQUIRE() { return m_mutex.lock(); }
-    bool try_lock() TRY_ACQUIRE(true) { return m_mutex.try_lock(); }
-    void unlock() RELEASE() { return m_mutex.unlock(); }
+	void lock() ACQUIRE() { return m_mutex.lock(); }
+	bool try_lock() TRY_ACQUIRE(true) { return m_mutex.try_lock(); }
+	void unlock() RELEASE() { return m_mutex.unlock(); }
 
 	native_handle_type native_handle() { return m_mutex.native_handle(); }
 
 private:
-    std::mutex m_mutex;
+	std::mutex m_mutex;
 };
 
 template<class Mutex = mutex, template<class> class UniqueLock = std::unique_lock>
@@ -337,7 +337,7 @@ private:
 	lock_type<mutex_type> m_lock_guard;
 };
 
-}   // namespace cts
+}	// namespace cts
 
 #else
 /// @brief Nullify THREAD SAFETY ANNOTATIONS
