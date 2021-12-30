@@ -162,10 +162,10 @@ struct is_mutex : std::false_type {};
 
 template <class T>
 struct is_mutex<T, void_t< 
-						decltype(std::declval<T>().lock()),
-						decltype(std::declval<T>().unlock()),
-						decltype(std::declval<T>().native_handle())>
-						> : std::true_type {};
+			decltype(std::declval<T>().lock()),
+			decltype(std::declval<T>().unlock()),
+			decltype(std::declval<T>().native_handle())>
+			> : std::true_type {};
 
 class CAPABILITY("mutex") mutex
 {
