@@ -161,225 +161,243 @@ template <class T, class = void>
 struct is_mutex : std::false_type {};
 
 template <class T>
-struct is_mutex<T, void_t< 
-			decltype(std::declval<T>().lock()),
-			decltype(std::declval<T>().unlock()),
-			decltype(std::declval<T>().native_handle())>
-			> : std::true_type {};
+struct is_mutex<T, void_t<
+        decltype(std::declval<T>().lock()),
+        decltype(std::declval<T>().unlock()),
+        decltype(std::declval<T>().native_handle())>
+        > : std::true_type {};
 
 class CAPABILITY("mutex") mutex
 {
 public:
-	using native_handle_type = std::mutex::native_handle_type;
+    using native_handle_type = std::mutex::native_handle_type;
 
-	constexpr mutex() noexcept = default;
-	~mutex() = default;
-	mutex& operator=(const mutex&) = delete;
+    constexpr mutex() noexcept = default;
+    ~mutex() = default;
+    mutex& operator=(const mutex&) = delete;
 
-	void lock() ACQUIRE() { return m_mutex.lock(); }
-	bool try_lock() TRY_ACQUIRE(true) { return m_mutex.try_lock(); }
-	void unlock() RELEASE() { return m_mutex.unlock(); }
+    void lock() ACQUIRE() { return m_mutex.lock(); }
+    bool try_lock() TRY_ACQUIRE(true) { return m_mutex.try_lock(); }
+    void unlock() RELEASE() { return m_mutex.unlock(); }
 
-	native_handle_type native_handle() { return m_mutex.native_handle(); }
+    native_handle_type native_handle() { return m_mutex.native_handle(); }
 
 private:
-	std::mutex m_mutex;
+    std::mutex m_mutex;
 };
 
-template<class Mutex = mutex, template<class> class UniqueLock = std::unique_lock>
+template<
+    class Mutex = mutex,
+    template<class> class UniqueLock = std::unique_lock
+>
 class SCOPED_CAPABILITY unique_lock
 {
 public:
-	using mutex_type = Mutex;
-	template<class T>
-	using lock_type = UniqueLock<T>;
+    using mutex_type = Mutex;
+    template<class T>
+    using lock_type = UniqueLock<T>;
 
-	static_assert(is_mutex<Mutex>::value, "Mutex parameter does not meet the requirements");
+    static_assert(is_mutex<Mutex>::value, "Mutex parameter does not meet the requirements");
 	
-	unique_lock() noexcept = default;
+    unique_lock() noexcept = default;
 
-	unique_lock(unique_lock &&other) noexcept : 
-		m_unique_lock(std::move(other.m_unique_lock)) 
-	{ 
-		m_mu = other.m_mu;
-		other.m_mu = nullptr;
-	}
+    unique_lock(unique_lock &&other) noexcept : 
+        m_unique_lock(std::move(other.m_unique_lock)) 
+    {
+        m_mu = other.m_mu;
+        other.m_mu = nullptr;
+    }
+
+    explicit unique_lock(mutex_type &m) ACQUIRE(m): 
+        m_unique_lock(m) 
+    {
+        m_mu = &m;
+    }
+
+    unique_lock(mutex_type &m, std::defer_lock_t t) noexcept EXCLUDES(m): 
+        m_unique_lock(m, t)
+    {
+        m_mu = &m;
+    }
+
+    unique_lock(mutex_type &m, std::try_to_lock_t t) ACQUIRE_SHARED(m): 
+        m_unique_lock(m, t)
+    {
+        m_mu = &m;
+    }
+
+    unique_lock(mutex_type &m, std::adopt_lock_t t) REQUIRES_SHARED(m): 
+        m_unique_lock(m, t)
+    {
+        m_mu = &m;
+    }
+
+    template< 
+        class Rep,
+        class Period
+    >
+    unique_lock( mutex_type& m,
+        const std::chrono::duration<Rep, Period>& timeout_duration ) TRY_ACQUIRE(true, m) : 
+        m_unique_lock(m, timeout_duration)
+    {
+        m_mu = &m;
+    }
+
+    template<
+        class Clock,
+        class Duration
+    >
+    unique_lock( mutex_type& m,
+        const std::chrono::time_point<Clock,Duration>& timeout_time ) TRY_ACQUIRE(true, m):
+        m_unique_lock(m, timeout_time)
+    {
+        m_mu = &m;
+    }
+
+    unique_lock& operator=(unique_lock &&other)
+    {
+        m_unique_lock(std::move(other.m_unique_lock));
+    }
+
+    ~unique_lock() RELEASE() = default;
+
+    void lock() ACQUIRE() 
+    {
+        return m_unique_lock.lock(); 
+    }
 	
-	explicit unique_lock(mutex_type &m) ACQUIRE(m): 
-		m_unique_lock(m) 
-	{
-		m_mu = &m;
-	}
-	
-	unique_lock(mutex_type &m, std::defer_lock_t t) noexcept EXCLUDES(m): 
-		m_unique_lock(m, t)
-	{
-		m_mu = &m;
-	}
-	
-	unique_lock(mutex_type &m, std::try_to_lock_t t) ACQUIRE_SHARED(m): 
-		m_unique_lock(m, t)
-	{
-		m_mu = &m;
-	}
-	
-	unique_lock(mutex_type &m, std::adopt_lock_t t) REQUIRES_SHARED(m): 
-		m_unique_lock(m, t)
-	{
-		m_mu = &m;
-	}
-	
-	template< class Rep, class Period >
-	unique_lock( mutex_type& m,
-             	const std::chrono::duration<Rep, Period>& timeout_duration ) TRY_ACQUIRE(true, m) : 
-		m_unique_lock(m, timeout_duration)
-	{
-		m_mu = &m;
-	}
+    bool try_lock() TRY_ACQUIRE(true) 
+    {
+        return m_unique_lock.try_lock(); 
+    }
 
-	template< class Clock, class Duration >
-	unique_lock( mutex_type& m,
-				const std::chrono::time_point<Clock,Duration>& timeout_time ) TRY_ACQUIRE(true, m):
-		m_unique_lock(m, timeout_time)
-	{
-		m_mu = &m;
-	}
+    template<
+        class Rep,
+        class Period
+    >
+    bool try_lock_for(const std::chrono::duration<Rep,Period>& timeout_duration)
+        TRY_ACQUIRE(true)
+    {
+        return m_unique_lock.try_lock_for(timeout_duration);
+    }
 
-	unique_lock& operator=(unique_lock &&other)
-	{
-		m_unique_lock(std::move(other.m_unique_lock));
-	}
+    template<
+        class Clock,
+        class Duration
+    >
+    bool try_lock_until(const std::chrono::time_point<Clock,Duration>& timeout_time)
+        TRY_ACQUIRE(true)
+    {
+        return m_unique_lock(timeout_time);
+    }
 
-	~unique_lock() RELEASE() = default;
+    void swap(unique_lock& other) noexcept
+    {
+        return m_unique_lock.swap(other.m_unique_lock);
+    }
 
-	void lock() ACQUIRE() 
-	{
-		return m_unique_lock.lock(); 
-	}
-	
-	bool try_lock() TRY_ACQUIRE(true) 
-	{
-		return m_unique_lock.try_lock(); 
-	}
+    mutex_type *release() noexcept RETURN_CAPABILITY(m_mu)
+    {
+        return m_unique_lock.release();
+    }
 
-	template< class Rep, class Period >
-	bool try_lock_for(const std::chrono::duration<Rep,Period>& timeout_duration) 
-			TRY_ACQUIRE(true)
-	{
-		return m_unique_lock.try_lock_for(timeout_duration);
-	}
+    mutex_type *mutex() const noexcept RETURN_CAPABILITY(m_mu)
+    {
+        return m_unique_lock.mutex();
+    }
 
-	template< class Clock, class Duration >
-	bool try_lock_until(const std::chrono::time_point<Clock,Duration>& timeout_time) 
-			TRY_ACQUIRE(true)
-	{
-		return m_unique_lock(timeout_time);
-	}
+    bool owns_lock() const noexcept
+    {
+        return m_unique_lock.owns_lock();
+    }
 
-	void swap(unique_lock& other) noexcept
-	{
-		return m_unique_lock.swap(other.m_unique_lock);
-	}
-
-	mutex_type *release() noexcept RETURN_CAPABILITY(m_mu)
-	{
-		return m_unique_lock.release();
-	}
-
-	mutex_type *mutex() const noexcept RETURN_CAPABILITY(m_mu)
-	{
-		return m_unique_lock.mutex();
-	}
-
-	bool owns_lock() const noexcept
-	{
-		return m_unique_lock.owns_lock();
-	}
-
-	explicit operator bool() const noexcept
-	{
-		return m_unique_lock.owns_lock();
-	}
+    explicit operator bool() const noexcept
+    {
+        return m_unique_lock.owns_lock();
+    }
 
 private:
-	mutex_type *m_mu = nullptr;
-	lock_type<mutex_type> m_unique_lock;
+    mutex_type *m_mu = nullptr;
+    lock_type<mutex_type> m_unique_lock;
 };
 
-template<class Mutex = mutex, template<class> class LockGuard = std::lock_guard>
+template<
+    class Mutex = mutex,
+    template<class> class LockGuard = std::lock_guard
+>
 class SCOPED_CAPABILITY lock_guard
 {
 public:
-	using mutex_type = Mutex;
-	template<class T>
-	using lock_type = LockGuard<T>;
+    using mutex_type = Mutex;
+    template<class T>
+    using lock_type = LockGuard<T>;
 
-	static_assert(is_mutex<Mutex>::value, "Mutex parameter does not meet the requirements");
+    static_assert(is_mutex<Mutex>::value, "Mutex parameter does not meet the requirements");
 
-	explicit lock_guard(mutex_type& m) ACQUIRE(m) : 
-		m_lock_guard(m) 
-	{
-		m_mu = &m;
-	}
+    explicit lock_guard(mutex_type& m) ACQUIRE(m) : 
+        m_lock_guard(m) 
+    {
+        m_mu = &m;
+    }
 
-	lock_guard(mutex_type& m, std::adopt_lock_t t) REQUIRES_SHARED(m) :
-		m_lock_guard(m, t)
-	{
-		m_mu = &m;
-	}
+    lock_guard(mutex_type& m, std::adopt_lock_t t) REQUIRES_SHARED(m) :
+        m_lock_guard(m, t)
+    {
+        m_mu = &m;
+    }
 
-	lock_guard( const lock_guard& ) = delete;
+    lock_guard( const lock_guard& ) = delete;
 
-	~lock_guard() RELEASE() = default;
+    ~lock_guard() RELEASE() = default;
 
 private:
-	mutex_type *m_mu;
-	lock_type<mutex_type> m_lock_guard;
+    mutex_type *m_mu;
+    lock_type<mutex_type> m_lock_guard;
 };
 
-}	// namespace cts
+}   // namespace cts
 
 #else
-/// @brief Nullify THREAD SAFETY ANNOTATIONS
 
+/// @brief Nullify CAPABILITY
 #define CAPABILITY(x)
-
+/// @brief Nullify SCOPED_CAPABILITY
 #define SCOPED_CAPABILITY
-
+/// @brief Nullify GUARDED_BY
 #define GUARDED_BY(x)
-
+/// @brief Nullify PT_GUARDED_BY
 #define PT_GUARDED_BY(x)
-
+/// @brief Nullify ACQUIRED_BEFORE
 #define ACQUIRED_BEFORE(...)
-
+/// @brief Nullify ACQUIRED_AFTER
 #define ACQUIRED_AFTER(...)
-
+/// @brief Nullify REQUIRES
 #define REQUIRES(...)
-
+/// @brief Nullify REQUIRES_SHARED
 #define REQUIRES_SHARED(...)
-
+/// @brief Nullify ACQUIRE
 #define ACQUIRE(...)
-
+/// @brief Nullify ACQUIRE_SHARED
 #define ACQUIRE_SHARED(...)
-
+/// @brief Nullify RELEASE
 #define RELEASE(...)
-
+/// @brief Nullify RELEASE_SHARED
 #define RELEASE_SHARED(...)
-
+/// @brief Nullify RELEASE_GENERIC
 #define RELEASE_GENERIC(...)
-
+/// @brief Nullify TRY_ACQUIRE
 #define TRY_ACQUIRE(...)
-
+/// @brief Nullify TRY_ACQUIRE_SHARED
 #define TRY_ACQUIRE_SHARED(...)
-
+/// @brief Nullify EXCLUDES
 #define EXCLUDES(...)
-
+/// @brief Nullify ASSERT_CAPABILITY
 #define ASSERT_CAPABILITY(x)
-
+/// @brief Nullify ASSERT_SHARED_CAPABILITY
 #define ASSERT_SHARED_CAPABILITY(x)
-
+/// @brief Nullify RETURN_CAPABILITY
 #define RETURN_CAPABILITY(x)
-
+/// @brief Nullify NO_THREAD_SAFETY_ANALYSIS
 #define NO_THREAD_SAFETY_ANALYSIS
 
 namespace cts{
